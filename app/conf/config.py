@@ -1,11 +1,17 @@
+import hashlib
+import time
+import uuid
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urljoin
+
 from pydantic import BaseSettings
 import os
 
 import requests
 from loguru import logger
 from configparser import ConfigParser
+from platform import platform, python_version, machine
 
 
 class Config(BaseSettings):
@@ -13,20 +19,21 @@ class Config(BaseSettings):
 
     DESC: Optional[str] = """
 ### **程序主要功能：**
+- 高效流媒体（具有缓冲区）
+- 代理任意视频网站的视频流
 - 生成m3u文件
 - 生成m3u8文件
-- 视频中转（具有缓冲区）
-- 异步下载视频
+- 异步下载流
 - 流媒体转发
 - 生成[EPG节目单](https://agit.ai/239144498/demo/raw/branch/master/4gtvchannel.xml) 每日实时更新
-- 分布式处理ts片段
+- 分布式处理ts片
 - Redis缓存参数
-- MySql或PostgreSql缓存视频
+- MySql缓存数据
 - 正向代理请求
-- 自定义增加节目频道
+- 自定义节目频道
 - 自定义电视台标
-- 清晰度可自定义
-- 反向代理或套CDN请求（负载均衡）
+- 自定义清晰度
+- 支持反向代理或CDN（负载均衡）
 ### 使用说明
 1. 接口说明: [查看接口使用教程](https://www.cnblogs.com/1314h/p/16651157.html)
 2. 项目代码: [Github开源代码](https://github.com/239144498/Streaming-Media-Server-Pro)
@@ -34,7 +41,7 @@ class Config(BaseSettings):
 - **向下滑动查看**
 """
 
-    VERSION = "2.2.6"
+    VERSION = "2.6"
 
     CONTACT = {
         "name": "Naihe",
@@ -48,7 +55,13 @@ class Config(BaseSettings):
 
     ROOT = Path(__file__).parent.parent  # .app
 
-    LOG_DIR = ROOT / f"assets/log"
+    LOG_DIR = ROOT / "log"
+
+    datadir = ROOT / 'vtemp'
+
+    count = 0
+
+    url_regex = r"(http|https)://((?:[\w-]+\.)+[a-z0-9]+)((?:\/[^/?#]*)+)?(\?[^#]+)?(#.+)?"
 
 
 logger.info("配置加载中...")
@@ -57,25 +70,25 @@ config = Config()
 request = requests.session()
 
 cfg = ConfigParser()
-cfg.read(config.ROOT / "conf/config.ini", encoding="utf-8")
+cfg.read(config.ROOT / "assets/config.ini", encoding="utf-8")
 redis_cfg = dict(cfg.items("redis"))
 mysql_cfg = dict(cfg.items("mysql"))
 default_cfg = dict(cfg.items("default"))
 advanced_cfg = dict(cfg.items("advanced"))
 other_cfg = dict(cfg.items("other"))
 PORT = int(os.getenv("PORT", default=default_cfg.get("port")))
-
+mdata = hashlib.md5(config.VERSION.encode()).hexdigest()
 vbuffer = int(default_cfg.get("vbuffer"))
 downurls = eval(default_cfg.get("downurls"))
 downurls = downurls * (vbuffer // len(downurls) + 1)
 localhost = os.environ.get("localhost") or default_cfg.get("localhost")
 defaultdb = default_cfg.get("defaultdb")
-
+purl = os.getenv("purl")
 host1 = advanced_cfg.get("host1")
 host2 = advanced_cfg.get("host2")
 tvglogo = advanced_cfg.get("tvglogo")
 proxies = advanced_cfg.get("proxies")
-DEBUG = eval(os.getenv("DEBUG", default=advanced_cfg.get("debug")))
+DEBUG = eval(os.getenv("DEBUG", default=advanced_cfg.get("debug", "False")))
 if proxies:
     os.environ["proxies"] = proxies
 
@@ -84,7 +97,7 @@ xmlrepo = other_cfg.get("xmlrepo")
 xmlaccess_token = other_cfg.get("xmlaccess_token")
 repoowner = other_cfg.get("repoowner")
 repoaccess_token = other_cfg.get("repoaccess_token")
-
+mac = uuid.UUID(int=uuid.getnode()).hex[-12:]
 if xmlowner and xmlaccess_token:
     xmlState = True
 else:
@@ -96,24 +109,33 @@ else:
 
 headers = {
     'Content-Type': 'video/MP2T',
+    'Cache-Control': 'max-age=600',
     'Accept-Ranges': 'bytes'
 }
-
-idata = eval(request.get("https://raw.githubusercontent.com/382420058/owner/main/data",
-                         headers={
-                             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:104.0) Gecko/20100101 Firefox/104.0"}).content)
-data3 = eval(request.get("https://raw.githubusercontent.com/382420058/owner/main/data3",
-                         headers={
-                             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:104.0) Gecko/20100101 Firefox/104.0"}).content)
-gdata = eval(request.get("https://raw.githubusercontent.com/382420058/owner/main/data2",
-                         headers={
-                             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:104.0) Gecko/20100101 Firefox/104.0"}).content)
-
-edata = eval(request.get("https://raw.githubusercontent.com/382420058/owner/main/data4",
-                         headers={
-                             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:104.0) Gecko/20100101 Firefox/104.0"}).content)
-HD = {
-    "360": "stream0.m3u8", "480": "stream1.m3u8", "720": "stream2.m3u8", "1080": "stream2.m3u8",
+headers2 = {
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+    'Content-Type': 'application/vnd.apple.mpegurl',
+    'Expires': '-1',
 }
+machine = f"Pyhton/{python_version()} ({machine()} {platform()} {mac}) Version/{config.VERSION}"
+print(".", end="")
+data3 = None
+try:
+    tx = int(time.time() - int(request.get(urljoin(data3["a1"], "sync"), headers={"User-Agent": machine}).json()["data"]))
+except Exception as e:
+    tx = 0
+print(".", end="")
+
+gdata = None
+print(".", end="")
+version = None
+print(".", end="\n")
+if config.VERSION != str(version):
+    logger.warning(f"当前版本为{config.VERSION}，最新版本为{version}，请及时更新！")
+    logger.warning("更新地址：https://github.com/239144498/Streaming-Media-Server-Pro")
+
+if localhost and "http" not in localhost:
+    logger.warning("localhost配置错误，具体查看教程https://www.cnblogs.com/1314h/p/16651157.html")
 
 logger.info("配置加载完成")
